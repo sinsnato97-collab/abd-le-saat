@@ -1,38 +1,1307 @@
-export default async function handler(req, res) {
-  try {
-    const apiKey = process.env.YOUTUBE_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "API key yok" });
-    }
-
-    // Örnek: tek kanal test
-    const channelHandle = "Moktalojik";
-
-    // 1. Kanal ID bul
-    const chRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forHandle=${channelHandle}&key=${apiKey}`
-    );
-    const chData = await chRes.json();
-
-    if (!chData.items || chData.items.length === 0) {
-      return res.status(404).json({ error: "Kanal bulunamadı" });
-    }
-
-    const uploadsPlaylist =
-      chData.items[0].contentDetails.relatedPlaylists.uploads;
-
-    // 2. Son videoları çek
-    const vidRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylist}&maxResults=5&key=${apiKey}`
-    );
-    const vidData = await vidRes.json();
-
-    return res.status(200).json(vidData);
-  } catch (err) {
-    return res.status(500).json({
-      error: "Sunucu hatası",
-      details: err.message,
-    });
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shorts Tracker + Saat Panosu</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface-2: #171722;
+    --border: #262638;
+    --border-soft: rgba(255,255,255,0.08);
+    --accent: #ff0033;
+    --accent2: #ff6b35;
+    --text: #f3f3f7;
+    --muted: #8a8aa0;
+    --card: #16161f;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #ea580c;
   }
-}
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -30%;
+    background:
+      radial-gradient(circle at 18% 18%, rgba(255,255,255,0.035), transparent 26%),
+      radial-gradient(circle at 75% 22%, rgba(255,255,255,0.025), transparent 24%),
+      radial-gradient(circle at 35% 80%, rgba(255,255,255,0.02), transparent 20%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    width: min(1720px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 18px 0 40px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+
+  .panel {
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+    border: 1px solid var(--border-soft);
+    border-radius: 26px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.35);
+    backdrop-filter: blur(8px);
+  }
+
+  .panel-inner {
+    padding: 22px;
+  }
+
+  .hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 24px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .hero-left {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .hero-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(30px, 3vw, 54px);
+    letter-spacing: 1.2px;
+    line-height: 0.95;
+    background: linear-gradient(135deg, #fff 35%, #ffb38e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-subtitle {
+    margin-top: 10px;
+    max-width: 700px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .hero-meta {
+    text-align: right;
+    min-width: 180px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .hero-meta strong {
+    display: block;
+    color: var(--text);
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+
+  .clock-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    padding: 22px;
+  }
+
+  .clock-card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border: 1px solid var(--border-soft);
+    border-radius: 24px;
+    padding: 20px;
+    min-height: 196px;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .clock-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.16);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.22);
+  }
+
+  .clock-card.active-green {
+    border-color: rgba(34,197,94,0.55);
+    background: linear-gradient(180deg, rgba(34,197,94,0.16), rgba(34,197,94,0.08));
+    box-shadow: 0 0 0 1px rgba(34,197,94,0.2) inset;
+  }
+
+  .clock-card.active-red {
+    border-color: rgba(239,68,68,0.55);
+    background: linear-gradient(180deg, rgba(239,68,68,0.16), rgba(239,68,68,0.08));
+    box-shadow: 0 0 0 1px rgba(239,68,68,0.16) inset;
+  }
+
+  .clock-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .zone-label {
+    font-size: 12px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+  }
+
+  .pill.live {
+    color: #bbf7d0;
+    background: rgba(34,197,94,0.16);
+    border-color: rgba(34,197,94,0.24);
+  }
+
+  .pill.hot {
+    color: #fecaca;
+    background: rgba(239,68,68,0.14);
+    border-color: rgba(239,68,68,0.24);
+  }
+
+  .clock-time {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(42px, 4vw, 62px);
+    line-height: 0.95;
+    letter-spacing: 1.2px;
+    margin-bottom: 10px;
+  }
+
+  .clock-city {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 15px;
+    margin-bottom: 8px;
+  }
+
+  .clock-date {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  .clock-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .mini-badge {
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .special-grid {
+    padding: 0 22px 22px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .tracker-wrap {
+    position: sticky;
+    top: 16px;
+  }
+
+  .tracker-wrap .hero {
+    padding-bottom: 20px;
+  }
+
+  .tracker-wrap .hero-title {
+    font-size: clamp(28px, 2.4vw, 44px);
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    margin: 18px 22px 0;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    font-size: 13px;
+  }
+
+  .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--muted); flex-shrink: 0; }
+  .dot.loading { background: var(--accent2); animation: pulse 1s infinite; }
+  .dot.ok { background: var(--green); }
+  .dot.error { background: var(--accent); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .status-text { flex: 1; color: var(--muted); }
+  .next-refresh { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  .progress-wrap {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    padding: 18px;
+    margin: 18px 22px 0;
+  }
+
+  .progress-label, .section-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .progress-bar-bg {
+    margin-top: 10px;
+    height: 7px;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 999px;
+    transition: width .35s ease;
+  }
+
+  .progress-detail {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .results-area {
+    padding: 20px 22px 22px;
+  }
+
+  .rank-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .rank-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-soft);
+    border-radius: 16px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 34px 72px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    color: inherit;
+    text-decoration: none;
+    transition: transform .16s ease, border-color .16s ease;
+  }
+
+  .rank-card:hover {
+    transform: translateX(3px);
+    border-color: rgba(255,255,255,0.16);
+  }
+
+  .rank-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1;
+  }
+
+  .rank-card:nth-child(1) .rank-num { color: #ffd700; }
+  .rank-card:nth-child(2) .rank-num { color: #d1d5db; }
+  .rank-card:nth-child(3) .rank-num { color: #d97706; }
+
+  .thumb, .thumb-ph {
+    width: 72px;
+    height: 128px;
+    border-radius: 12px;
+    background: var(--border);
+    object-fit: cover;
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+    overflow: hidden;
+  }
+
+  .channel-tag {
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #ffb38e;
+    font-weight: 700;
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .video-title {
+    font-size: 14px;
+    line-height: 1.45;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .video-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: var(--muted);
+  }
+
+  .badge.views { color: #ffc1cc; background: rgba(255,0,51,0.09); }
+  .badge.time { color: #bbf7d0; background: rgba(34,197,94,0.09); }
+  .badge.dur { color: #fed7aa; background: rgba(255,107,53,0.09); }
+
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 46px 20px 14px;
+  }
+
+  .empty-state .big {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  .empty-state p {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+
+
+  .clock-panel {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .clock-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .clock-header-card {
+    border-radius: 26px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.05);
+    padding: 22px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+  }
+
+  .clock-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .clock-header-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .clock-header-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+
+  .clock-header-card .eyebrow {
+    margin-bottom: 6px;
+    color: #a1a1aa;
+  }
+
+  .clock-header-card .hero-title {
+    font-family: 'DM Sans', sans-serif;
+    font-size: clamp(28px, 2.4vw, 42px);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+    color: #ffffff;
+    background: none;
+    -webkit-text-fill-color: initial;
+  }
+
+  .clock-header-card .hero-subtitle {
+    margin-top: 10px;
+    max-width: 780px;
+    color: #a1a1aa;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .clock-header-card .hero-meta {
+    min-width: 160px;
+    text-align: right;
+    color: #a1a1aa;
+    font-size: 12px;
+  }
+
+  .clock-header-card .hero-meta strong {
+    color: #fff;
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+
+  .clock-section {
+    border-radius: 26px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+  }
+
+  .clock-section-title {
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #a1a1aa;
+    margin-bottom: 16px;
+  }
+
+  .clock-separator {
+    height: 1px;
+    width: 100%;
+    background: rgba(255,255,255,0.1);
+    margin: 2px 0;
+  }
+
+  .clock-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    padding: 0;
+  }
+
+  .special-grid {
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .clock-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 22px;
+    min-height: 0;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+  }
+
+  .clock-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: 0 16px 36px rgba(0,0,0,0.22);
+  }
+
+  .clock-card.active-green {
+    border-color: rgba(74, 222, 128, 0.55);
+    background: rgba(34,197,94,0.16);
+    box-shadow: inset 0 0 0 1px rgba(74,222,128,0.16);
+  }
+
+  .clock-card.active-red {
+    border-color: rgba(248, 113, 113, 0.55);
+    background: rgba(239,68,68,0.15);
+    box-shadow: inset 0 0 0 1px rgba(248,113,113,0.14);
+  }
+
+  .zone-label {
+    font-size: 12px;
+    letter-spacing: 1.7px;
+    text-transform: uppercase;
+    color: #a1a1aa;
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.06);
+    color: #a1a1aa;
+  }
+
+  .pill.live {
+    color: #dcfce7;
+    background: rgba(34,197,94,0.18);
+    border-color: rgba(34,197,94,0.25);
+  }
+
+  .pill.hot {
+    color: #fee2e2;
+    background: rgba(239,68,68,0.16);
+    border-color: rgba(239,68,68,0.24);
+  }
+
+  .clock-time {
+    font-family: 'DM Sans', sans-serif;
+    font-size: clamp(34px, 3.3vw, 52px);
+    line-height: 1;
+    letter-spacing: -0.05em;
+    font-weight: 800;
+    margin-bottom: 10px;
+    color: #fff;
+  }
+
+  .clock-city {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 15px;
+    color: #f4f4f5;
+    margin-bottom: 8px;
+  }
+
+  .clock-date {
+    color: #a1a1aa;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  .mini-badge {
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: #a1a1aa;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  @media (max-width: 1280px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .tracker-wrap { position: static; }
+  }
+
+  @media (max-width: 980px) {
+    .clock-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .special-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 720px) {
+    .clock-header-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .page { width: min(100vw - 18px, 1720px); }
+    .hero {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .hero-meta,
+    .clock-header-card .hero-meta {
+      min-width: 0;
+      text-align: left;
+    }
+    .clock-grid { grid-template-columns: 1fr; }
+    .rank-card { grid-template-columns: 28px 60px minmax(0, 1fr); }
+    .thumb, .thumb-ph { width: 60px; height: 106px; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="layout">
+      <section class="clock-panel">
+        <div class="clock-shell">
+          <div class="clock-header-card">
+            <div class="clock-header-row">
+              <div class="clock-header-left">
+                <div class="clock-header-icon">🕒</div>
+                <div>
+                  <div class="eyebrow">Kitle saat panosu</div>
+                  <h1 class="hero-title">Youtube Kitle Saat Takip</h1>
+                  <p class="hero-subtitle">Saat kısmı soldan başlar ve masaüstünde yaklaşık yüzde 75 alan kaplar. ABD saatleri üstte durur, Hindistan ve Filipinler ise altta ayrı bölümde gösterilir.</p>
+                </div>
+              </div>
+              <div class="hero-meta">
+                <strong id="trNow">—</strong>
+                Türkiye saati
+              </div>
+            </div>
+          </div>
+
+          <div class="clock-section">
+            <div class="clock-section-title">ABD saat dilimleri</div>
+            <div class="clock-grid" id="usClockGrid"></div>
+          </div>
+
+          <div class="clock-separator"></div>
+
+          <div class="clock-section">
+            <div class="clock-section-title">Hindistan ve Filipinler</div>
+            <div class="special-grid" id="specialClockGrid"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel tracker-wrap">
+        <div class="hero">
+          <div class="hero-left">
+            <div class="hero-icon">▶</div>
+            <div>
+              <div class="eyebrow">Canlı performans</div>
+              <h2 class="hero-title">Shorts Tracker</h2>
+              <p class="hero-subtitle">Son 24 saatte en çok izlenen Shorts videoları. Sayfa yenilense bile aynı saat diliminde cache korunur.</p>
+            </div>
+          </div>
+          <div class="hero-meta">
+            <strong id="lastUpdate">—</strong>
+            Son güncelleme
+          </div>
+        </div>
+
+        <div class="status-bar">
+          <div class="dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Başlatılıyor…</span>
+          <span class="next-refresh" id="nextRefresh"></span>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap" style="display:none">
+          <div class="progress-label">Kanallar taranıyor…</div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+          <div class="progress-detail" id="progressDetail"></div>
+        </div>
+
+        <div class="results-area">
+          <div id="resultsSection" style="display:none">
+            <div class="section-label">Top 10 Shorts — Son 24 Saat</div>
+            <div class="rank-list" id="rankList"></div>
+          </div>
+
+          <div id="emptyState" class="empty-state" style="display:none">
+            <div class="big">📭</div>
+            <p id="emptyMsg">Son 24 saatte Shorts videosu bulunamadı.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+  // CLOCK DATA
+  const STATE_TIMEZONES = [
+    { zoneLabel: "Doğu Saat Dilimi", state: "New York", population: "19.87M", timeZone: "America/New_York", offset: "UTC−4 / UTC−5" },
+    { zoneLabel: "Merkez Saat Dilimi", state: "Illinois", population: "12.55M", timeZone: "America/Chicago", offset: "UTC−5 / UTC−6" },
+    { zoneLabel: "Dağ Saat Dilimi", state: "Arizona", population: "7.58M", timeZone: "America/Phoenix", offset: "UTC−7" },
+    { zoneLabel: "Pasifik Saat Dilimi", state: "California", population: "39.43M", timeZone: "America/Los_Angeles", offset: "UTC−7 / UTC−8" },
+    { zoneLabel: "Alaska Saat Dilimi", state: "Alaska", population: "733K", timeZone: "America/Anchorage", offset: "UTC−8 / UTC−9" },
+    { zoneLabel: "Hawaii Saat Dilimi", state: "Hawaii", population: "1.45M", timeZone: "Pacific/Honolulu", offset: "UTC−10" },
+  ];
+
+  const INDIA_TIME = {
+    zoneLabel: "Hindistan Saat Dilimi",
+    state: "Hindistan",
+    population: "1.43B",
+    timeZone: "Asia/Kolkata",
+    offset: "UTC+5:30",
+  };
+
+  const PH_TIME = {
+    zoneLabel: "Filipinler Saat Dilimi",
+    state: "Filipinler",
+    population: "114M",
+    timeZone: "Asia/Manila",
+    offset: "UTC+8",
+  };
+
+  function safeFormatTime(date, timeZone) {
+    return new Intl.DateTimeFormat("tr-TR", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(date);
+  }
+
+  function safeFormatDate(date, timeZone) {
+    return new Intl.DateTimeFormat("tr-TR", {
+      timeZone,
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  }
+
+  function getHour(date, timeZone) {
+    const h = new Intl.DateTimeFormat("tr-TR", {
+      timeZone,
+      hour: "2-digit",
+      hour12: false,
+    }).format(date);
+    return Number(h);
+  }
+
+  function isPrime(date, zone) {
+    const h = getHour(date, zone);
+    return h >= 16 && h <= 23;
+  }
+
+  function makeClockCard(item, activeClass, badgeText, badgeClass) {
+    return `
+      <article class="clock-card ${activeClass}">
+        <div class="clock-top">
+          <div class="zone-label">${item.zoneLabel}</div>
+          <div class="pill ${badgeClass}">${badgeText}</div>
+        </div>
+        <div class="clock-time">${safeFormatTime(new Date(), item.timeZone)}</div>
+        <div class="clock-city">📍 ${item.state}</div>
+        <div class="clock-date">${safeFormatDate(new Date(), item.timeZone)}</div>
+        <div class="clock-footer">
+          <div class="mini-badge">👥 Nüfus: ${item.population}</div>
+          <div class="mini-badge">🌐 ${item.offset}</div>
+        </div>
+      </article>`;
+  }
+
+  function renderClocks() {
+    const now = new Date();
+    document.getElementById("trNow").textContent = now.toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    });
+
+    const usHtml = STATE_TIMEZONES.map((item) => {
+      const active = isPrime(now, item.timeZone);
+      return `
+        <article class="clock-card ${active ? 'active-green' : ''}">
+          <div class="clock-top">
+            <div class="zone-label">${item.zoneLabel}</div>
+            <div class="pill ${active ? 'live' : ''}">${active ? 'prime saat' : item.offset}</div>
+          </div>
+          <div class="clock-time">${safeFormatTime(now, item.timeZone)}</div>
+          <div class="clock-city">📍 ${item.state}</div>
+          <div class="clock-date">${safeFormatDate(now, item.timeZone)}</div>
+          <div class="clock-footer">
+            <div class="mini-badge">👥 Nüfus: ${item.population}</div>
+            <div class="mini-badge">🌐 ${item.offset}</div>
+          </div>
+        </article>`;
+    }).join('');
+
+    const indiaActive = isPrime(now, INDIA_TIME.timeZone);
+    const phActive = isPrime(now, PH_TIME.timeZone);
+
+    const specialHtml = `
+      <article class="clock-card ${indiaActive ? 'active-red' : ''}">
+        <div class="clock-top">
+          <div class="zone-label">${INDIA_TIME.zoneLabel}</div>
+          <div class="pill ${indiaActive ? 'hot' : ''}">${indiaActive ? 'prime saat' : INDIA_TIME.offset}</div>
+        </div>
+        <div class="clock-time">${safeFormatTime(now, INDIA_TIME.timeZone)}</div>
+        <div class="clock-city">📍 Hindistan</div>
+        <div class="clock-date">${safeFormatDate(now, INDIA_TIME.timeZone)}</div>
+        <div class="clock-footer">
+          <div class="mini-badge">👥 Nüfus: ${INDIA_TIME.population}</div>
+          <div class="mini-badge">🌐 ${INDIA_TIME.offset}</div>
+        </div>
+      </article>
+      <article class="clock-card ${phActive ? 'active-red' : ''}">
+        <div class="clock-top">
+          <div class="zone-label">${PH_TIME.zoneLabel}</div>
+          <div class="pill ${phActive ? 'hot' : ''}">${phActive ? 'prime saat' : PH_TIME.offset}</div>
+        </div>
+        <div class="clock-time">${safeFormatTime(now, PH_TIME.timeZone)}</div>
+        <div class="clock-city">📍 Filipinler</div>
+        <div class="clock-date">${safeFormatDate(now, PH_TIME.timeZone)}</div>
+        <div class="clock-footer">
+          <div class="mini-badge">👥 Nüfus: ${PH_TIME.population}</div>
+          <div class="mini-badge">🌐 ${PH_TIME.offset}</div>
+        </div>
+      </article>`;
+
+    document.getElementById("usClockGrid").innerHTML = usHtml;
+    document.getElementById("specialClockGrid").innerHTML = specialHtml;
+  }
+
+  setInterval(renderClocks, 1000);
+  renderClocks();
+
+  // TRACKER CONFIG
+  const API_KEYS = [
+    "AIzaSyAlKVwy41np4oUlYpCVqY_nB9xMmRdFtt4",
+    "AIzaSyA86YeMU5VEZKf4BuQ_oWogdd01BEGk12M"
+  ];
+
+  const CHANNELS = [
+    "@aegisdank",
+    "@Aethronis",
+    "@ArcadeAssassin",
+    "@aspectmeme",
+    "@BlixMeme",
+    "@BloopTubeShorts",
+    "@BoruMemes",
+    "@Brox_short",
+    "@CrypticWorlds",
+    "@CurtZmemes",
+    "@Cyall",
+    "@DAL3X",
+    "@DerbederYoutuber",
+    "@Devil_Reactx",
+    "@drixx3",
+    "@EğitimciAdam",
+    "@EzaXD09",
+    "@EzyCric",
+    "@FirstlaughterDose",
+    "@Flaxt",
+    "@GAMETIMENahom",
+    "@gelnox",
+    "@GenZMems",
+    "@gkhnoner",
+    "@Goofarr",
+    "@Grinly2",
+    "@hardwarenf",
+    "@Hayal-o9j",
+    "@iCloud.y",
+    "@itsmemetronix",
+    "@japinoygaming",
+    "@JemsyMemes",
+    "@Jolizo",
+    "@JosephMemess",
+    "@KarmaxKarışık",
+    "@Karsilastirio",
+    "@kazeshort",
+    "@Klypt.x",
+    "@komuskax1",
+    "@KXHighlights1",
+    "@Mematus",
+    "@memearea",
+    "@MemeDoggyZ",
+    "@Memesasha",
+    "@memessoo",
+    "@Memmes2025",
+    "@Memurk",
+    "@menimeme",
+    "@Mesosphere-92",
+    "@MiiRain",
+    "@Moktalojik",
+    "@monium",
+    "@MrManZello",
+    "@MrUnknownXD",
+    "@newdaynewgame",
+    "@NikaDimension",
+    "@NonGeek",
+    "@NotSlayerOp",
+    "@Ogigs",
+    "@ONLYMEMES-4YOU",
+    "@OrhanYenen",
+    "@OxygenosDuo",
+    "@PepePeepo",
+    "@Pezoid.x",
+    "@Pfft_real",
+    "@PixelCompa",
+    "@Pixelinu",
+    "@Puzz.Y",
+    "@RealBlastHaven",
+    "@Refahyolcusu",
+    "@SkeldZ",
+    "@SnipZMemes",
+    "@Techlin",
+    "@TrigX_I",
+    "@twosidememes",
+    "@umemsus",
+    "@utkueditnw",
+    "@VadeZmemes",
+    "@VazhYT",
+    "@victor_rozz",
+    "@vkomedipost",
+    "@wafuu",
+    "@WisdomVerse2",
+    "@XoreXEdit",
+    "@yaşayan.ölüyüm8",
+    "@yt.meminho",
+    "@Zdak",
+    "@Zgji",
+    "@zhiphyr",
+    "@Zinngy",
+    "@Zohomemes",
+    "@ZorbZorb",
+    "@Zplunk",
+    "@Zwaphr",
+    "@ZyroMems"
+  ];
+
+  const BASE = "https://www.googleapis.com/youtube/v3";
+  const CACHE_KEY = "shortsTrackerCacheV1";
+  let keyIdx = 0;
+  let countdownTimer = null;
+  let hourlyTimer = null;
+
+  function nextKey() { return API_KEYS[keyIdx++ % API_KEYS.length]; }
+
+  function getHourBucket(date = new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}-${String(date.getHours()).padStart(2,"0")}`;
+  }
+
+  function saveCache(allShorts) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        bucket: getHourBucket(),
+        savedAt: new Date().toISOString(),
+        allShorts
+      }));
+    } catch (e) {
+      console.warn("Cache kaydedilemedi:", e.message);
+    }
+  }
+
+  function loadCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.allShorts)) return null;
+      return parsed;
+    } catch (e) {
+      console.warn("Cache okunamadı:", e.message);
+      return null;
+    }
+  }
+
+  function msUntilNextHour() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(now.getHours() + 1, 0, 0, 0);
+    return next - now;
+  }
+
+  function scheduleNextHour() {
+    if (hourlyTimer) clearTimeout(hourlyTimer);
+    const ms = msUntilNextHour();
+    hourlyTimer = setTimeout(async () => {
+      await fetchAll();
+      scheduleNextHour();
+    }, ms);
+  }
+
+  function startCountdown() {
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(() => {
+      const rem = msUntilNextHour();
+      const m = Math.floor(rem / 60000);
+      const s = Math.floor((rem % 60000) / 1000);
+      document.getElementById("nextRefresh").textContent = `Sonraki yenileme: ${m}:${s.toString().padStart(2,"0")}`;
+    }, 1000);
+  }
+
+  function setStatus(type, msg) {
+    document.getElementById("statusDot").className = "dot " + type;
+    document.getElementById("statusText").textContent = msg;
+  }
+
+  function setProgress(done, total, label) {
+    const wrap = document.getElementById("progressWrap");
+    if (total === 0) { wrap.style.display = "none"; return; }
+    wrap.style.display = "block";
+    document.getElementById("progressFill").style.width = Math.round((done / total) * 100) + "%";
+    document.getElementById("progressDetail").textContent = label;
+  }
+
+  async function yt(endpoint, params) {
+    const url = new URL(BASE + endpoint);
+    url.searchParams.set("key", nextKey());
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    const r = await fetch(url);
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      throw new Error(e?.error?.message || "HTTP " + r.status);
+    }
+    return r.json();
+  }
+
+  async function resolveChannelId(handle) {
+    try {
+      const h = handle.startsWith("@") ? handle.slice(1) : handle;
+      const d = await yt("/channels", { part: "id", forHandle: h });
+      if (d.items?.length) return d.items[0].id;
+    } catch (_) {}
+
+    const d = await yt("/search", { part: "snippet", type: "channel", q: handle, maxResults: 1 });
+    if (d.items?.length) return d.items[0].id.channelId;
+    throw new Error("Bulunamadı: " + handle);
+  }
+
+  async function getUploadsPlaylist(channelId) {
+    const d = await yt("/channels", { part: "contentDetails", id: channelId });
+    return d.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  }
+
+  async function getRecentVideos(playlistId) {
+    const d = await yt("/playlistItems", {
+      part: "contentDetails,snippet",
+      playlistId,
+      maxResults: 50
+    });
+    return d.items || [];
+  }
+
+  async function getVideoDetails(ids) {
+    if (!ids.length) return [];
+    const d = await yt("/videos", { part: "contentDetails,statistics,snippet", id: ids.join(",") });
+    return d.items || [];
+  }
+
+  function parseDuration(d) {
+    const m = d.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return 0;
+    return (parseInt(m[1] || 0) * 3600) + (parseInt(m[2] || 0) * 60) + parseInt(m[3] || 0);
+  }
+
+  function timeAgo(ds) {
+    const diff = (Date.now() - new Date(ds)) / 1000;
+    if (diff < 3600) return Math.max(1, Math.floor(diff / 60)) + "d önce";
+    return Math.floor(diff / 3600) + "s önce";
+  }
+
+  function fmtViews(n) {
+    n = parseInt(n) || 0;
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    return n.toString();
+  }
+
+  function fmtDur(s) {
+    return Math.floor(s / 60) + ":" + (s % 60).toString().padStart(2, "0");
+  }
+
+  function esc(s) {
+    return (s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function renderResults(allShorts, options = {}) {
+    const { savedAt = null, source = "live" } = options;
+
+    document.getElementById("resultsSection").style.display = "none";
+    document.getElementById("emptyState").style.display = "none";
+    setProgress(0, 0, "");
+
+    if (!allShorts.length) {
+      setStatus("error", "Gösterilecek veri yok.");
+      document.getElementById("emptyMsg").textContent = "Kaydedilmiş ya da yeni veri bulunamadı.";
+      document.getElementById("emptyState").style.display = "block";
+      return;
+    }
+
+    allShorts.sort((a, b) => b.views - a.views);
+    const top10 = allShorts.slice(0, 10);
+
+    const list = document.getElementById("rankList");
+    list.innerHTML = "";
+
+    top10.forEach((v, i) => {
+      const card = document.createElement("a");
+      card.className = "rank-card";
+      card.href = "https://youtube.com/shorts/" + v.id;
+      card.target = "_blank";
+      card.rel = "noopener";
+      card.innerHTML = `
+        <div class="rank-num">${i + 1}</div>
+        ${v.thumb ? `<img class="thumb" src="${esc(v.thumb)}" alt="" loading="lazy">` : `<div class="thumb-ph">📱</div>`}
+        <div>
+          <div class="channel-tag">${esc(v.channel)}</div>
+          <div class="video-title">${esc(v.title)}</div>
+          <div class="video-meta">
+            <span class="badge views">👁 ${fmtViews(v.views)}</span>
+            <span class="badge time">🕐 ${timeAgo(v.publishedAt)}</span>
+            <span class="badge dur">⏱ ${fmtDur(v.duration)}</span>
+          </div>
+        </div>`;
+      list.appendChild(card);
+    });
+
+    const updateTime = savedAt ? new Date(savedAt) : new Date();
+    document.getElementById("lastUpdate").textContent = updateTime.toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+
+    document.getElementById("resultsSection").style.display = "block";
+
+    if (source === "cache") {
+      setStatus("ok", `${allShorts.length} Shorts arasından top 10 — kayıtlı veri gösteriliyor`);
+    } else if (source === "stale-cache") {
+      setStatus("error", "Canlı tarama başarısız oldu, kayıtlı son veri gösteriliyor.");
+    } else {
+      setStatus("ok", `${allShorts.length} Shorts arasından top 10 — her tam saatte güncellenir`);
+    }
+  }
+
+  function hasFreshCache(cache) {
+    return cache && cache.bucket === getHourBucket() && Array.isArray(cache.allShorts) && cache.allShorts.length > 0;
+  }
+
+  async function fetchAll() {
+    setStatus("loading", "Taranıyor…");
+    document.getElementById("emptyState").style.display = "none";
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const allShorts = [];
+    const total = CHANNELS.length;
+
+    for (let i = 0; i < total; i++) {
+      const ch = CHANNELS[i];
+      setProgress(i, total, `[${i + 1}/${total}] ${ch}`);
+      setStatus("loading", `${ch} işleniyor…`);
+
+      try {
+        const channelId = await resolveChannelId(ch);
+        const uploadsId = await getUploadsPlaylist(channelId);
+        if (!uploadsId) continue;
+
+        const items = await getRecentVideos(uploadsId);
+        const recent = items.filter((it) => {
+          const pub = new Date(it.contentDetails?.videoPublishedAt || it.snippet?.publishedAt);
+          return pub >= cutoff;
+        });
+        if (!recent.length) continue;
+
+        const ids = recent
+          .map((it) => it.contentDetails?.videoId || it.snippet?.resourceId?.videoId)
+          .filter(Boolean);
+
+        const details = await getVideoDetails(ids);
+        for (const v of details) {
+          const dur = parseDuration(v.contentDetails?.duration || "PT0S");
+          if (dur < 1 || dur > 60) continue;
+          allShorts.push({
+            id: v.id,
+            title: v.snippet?.title,
+            channel: v.snippet?.channelTitle,
+            publishedAt: v.snippet?.publishedAt,
+            views: parseInt(v.statistics?.viewCount || 0),
+            duration: dur,
+            thumb: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.default?.url
+          });
+        }
+      } catch (e) {
+        console.warn(ch, e.message);
+      }
+    }
+
+    if (!allShorts.length) {
+      const cache = loadCache();
+      if (cache?.allShorts?.length) {
+        renderResults(cache.allShorts, { savedAt: cache.savedAt, source: "stale-cache" });
+        return;
+      }
+
+      setProgress(0, 0, "");
+      setStatus("error", "Son 24 saatte Shorts bulunamadı veya kota doldu.");
+      document.getElementById("emptyMsg").textContent = "Son 24 saatte kanallardan Shorts videosu bulunamadı ya da API kotası tükendi.";
+      document.getElementById("emptyState").style.display = "block";
+      return;
+    }
+
+    saveCache(allShorts);
+    const cache = loadCache();
+    renderResults(allShorts, { savedAt: cache?.savedAt, source: "live" });
+  }
+
+  function initTracker() {
+    startCountdown();
+    scheduleNextHour();
+
+    const cache = loadCache();
+    if (hasFreshCache(cache)) {
+      renderResults(cache.allShorts, { savedAt: cache.savedAt, source: "cache" });
+      return;
+    }
+
+    fetchAll();
+  }
+
+  initTracker();
+</script>
+</body>
+</html>
