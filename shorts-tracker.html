@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔥 Shorts Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --border: #1e1e2e;
+    --accent: #ff0033;
+    --accent2: #ff6b35;
+    --text: #f0f0f5;
+    --muted: #6b6b80;
+    --card: #16161f;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content:'';
+    position:fixed; top:-50%; left:-50%; width:200%; height:200%;
+    background: radial-gradient(ellipse at 20% 20%, rgba(255,0,51,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(255,107,53,0.03) 0%, transparent 50%);
+    pointer-events:none; z-index:0;
+  }
+  .wrap { position:relative; z-index:1; max-width:860px; margin:0 auto; padding:0 20px 60px; }
+
+  header {
+    padding:40px 0 28px;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:1px solid var(--border); margin-bottom:28px;
+  }
+  .logo { display:flex; align-items:center; gap:12px; }
+  .logo-icon {
+    width:42px; height:42px; background:var(--accent); border-radius:10px;
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+  }
+  h1 {
+    font-family:'Bebas Neue',sans-serif;
+    font-size:clamp(26px,5vw,42px); letter-spacing:2px; line-height:1;
+    background:linear-gradient(135deg, var(--text) 40%, var(--accent2));
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .subtitle { font-size:12px; color:var(--muted); margin-top:4px; letter-spacing:.5px; }
+  .meta-box { text-align:right; font-size:12px; color:var(--muted); }
+  .meta-box strong { color:var(--text); font-size:14px; display:block; margin-bottom:2px; }
+
+  /* STATUS */
+  .status-bar {
+    display:flex; align-items:center; gap:10px;
+    padding:12px 16px; background:var(--surface);
+    border:1px solid var(--border); border-radius:12px;
+    margin-bottom:28px; font-size:13px;
+  }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .dot.loading { background:var(--accent2); animation:pulse 1s infinite; }
+  .dot.ok { background:#22c55e; }
+  .dot.error { background:var(--accent); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .status-text { flex:1; color:var(--muted); }
+  .next-refresh { color:var(--muted); font-size:12px; margin-left:auto; white-space:nowrap; }
+
+  /* PROGRESS */
+  .progress-wrap {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:18px 20px; margin-bottom:28px;
+  }
+  .progress-label { font-size:12px; color:var(--muted); margin-bottom:10px; }
+  .progress-bar-bg { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+  .progress-bar-fill {
+    height:100%; width:0%;
+    background:linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius:3px; transition:width .4s ease;
+  }
+  .progress-detail { font-size:11px; color:var(--muted); margin-top:8px; }
+
+  /* RESULTS */
+  .section-label { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:16px; }
+  .rank-list { display:flex; flex-direction:column; gap:10px; }
+  .rank-card {
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:16px 20px;
+    display:grid; grid-template-columns:36px 72px 1fr auto;
+    gap:16px; align-items:center;
+    transition:border-color .2s, transform .15s;
+    text-decoration:none; color:inherit;
+    animation: fadeIn .4s ease both;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  .rank-card:hover { border-color:rgba(255,0,51,.4); transform:translateX(4px); }
+  .rank-num { font-family:'Bebas Neue',sans-serif; font-size:28px; color:var(--muted); line-height:1; text-align:center; }
+  .rank-card:nth-child(1) .rank-num { color:#ffd700; }
+  .rank-card:nth-child(2) .rank-num { color:#c0c0c0; }
+  .rank-card:nth-child(3) .rank-num { color:#cd7f32; }
+  .thumb { width:72px; height:128px; object-fit:cover; border-radius:8px; background:var(--border); flex-shrink:0; }
+  .thumb-ph { width:72px; height:128px; border-radius:8px; background:var(--border); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+  .card-info { min-width:0; }
+  .channel-tag { font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--accent2); margin-bottom:6px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .video-title { font-size:15px; font-weight:500; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .video-meta { display:flex; gap:8px; flex-wrap:wrap; }
+  .badge { font-size:11px; padding:3px 8px; border-radius:6px; background:var(--border); color:var(--muted); font-weight:500; }
+  .badge.views { background:rgba(255,0,51,.12); color:var(--accent); }
+  .badge.time  { background:rgba(34,197,94,.1); color:#22c55e; }
+  .badge.dur   { background:rgba(255,107,53,.1); color:var(--accent2); }
+  .view-count-bar { width:60px; text-align:right; }
+  .view-bar-bg { height:4px; background:var(--border); border-radius:2px; margin-top:8px; overflow:hidden; }
+  .view-bar-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:2px; transition:width .6s ease; }
+  .view-num { font-family:'Bebas Neue',sans-serif; font-size:22px; line-height:1; white-space:nowrap; }
+  .view-label { font-size:10px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+
+  .empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty-state .big { font-size:48px; margin-bottom:12px; }
+  .empty-state p { font-size:14px; line-height:1.6; }
+
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  @media(max-width:600px){
+    .rank-card { grid-template-columns:28px 56px 1fr; }
+    .view-count-bar { display:none; }
+    .thumb,.thumb-ph { width:56px; height:100px; }
+    header { flex-direction:column; gap:12px; align-items:flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">▶</div>
+      <div>
+        <h1>Shorts Tracker</h1>
+        <div class="subtitle">Son 24 saatin en çok izlenen Shorts videoları</div>
+      </div>
+    </div>
+    <div class="meta-box">
+      <strong id="lastUpdate">—</strong>
+      Son güncelleme
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Başlatılıyor…</span>
+    <span class="next-refresh" id="nextRefresh"></span>
+  </div>
+
+  <div class="progress-wrap" id="progressWrap" style="display:none">
+    <div class="progress-label">Kanallar taranıyor…</div>
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <div class="progress-detail" id="progressDetail"></div>
+  </div>
+
+  <div id="resultsSection" style="display:none">
+    <div class="section-label">🏆 Top 10 Shorts — Son 24 Saat</div>
+    <div class="rank-list" id="rankList"></div>
+  </div>
+
+  <div id="emptyState" class="empty-state" style="display:none">
+    <div class="big">📭</div>
+    <p id="emptyMsg">Son 24 saatte Shorts videosu bulunamadı.</p>
+  </div>
+
+</div>
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const API_KEYS = [
+  "AIzaSyAlKVwy41np4oUlYpCVqY_nB9xMmRdFtt4",
+  "AIzaSyA86YeMU5VEZKf4BuQ_oWogdd01BEGk12M"
+];
+
+const CHANNELS = [
+  "@EgitimciAdam","@SnipZMemes","@EzaXD09","@zhiphyr","@MemeDoggyZ",
+  "@Moktalojik","@ONLYMEMES-4YOU","@MiiRain","@monium","@CurtZmemes",
+  "@PixelinuBlixMeme","@Pezoid.x","@Refahyolcusu","@victor_rozz",
+  "@FirstlaughterDose","@Devil_React","@twosidememes","@CrypticWorlds",
+  "@gelnox","@BloopTubeShorts","@OxygenosDuo","@wafuuMrUnknownXD",
+  "@GenZMems","@DAL3X","@NonGeek","@Grin","@PixelCompaly2","@iCloud.y",
+  "@Zinng","@Jolizo","@menimemee","@Mesosphere-92","@Flaxtu","@Ogigsy",
+  "@Pfft_real","@GAMETIMENahomom","@ZorbZorb","@Memurk","@XoreXEdit",
+  "@itsmemetronix","@BoruMemes","@VazhYT","@Zohomemes","@Mematus",
+  "@TrigX_I","@Zwaphr","@Puzz.Y","@JosephMemess","@aspectmeme",
+  "@WisdomVerse2","@KXHi","@SkeldZ","@japinoygamingghlights1","@yt.meminho",
+  "@VadeZmemes","@Cyall","@Zdak","@NikaDimension","@RealBlastHaven",
+  "@MrManZell","@memessoo","@vkomedipost","@Zplunko","@EzyCricu",
+  "@Goofarr","@Karsilastirio","@drixx3","@Klypt.x",
+  "@Techlin","@JemsyMemes","@ZyroMems"
+];
+
+const BASE = "https://www.googleapis.com/youtube/v3";
+let keyIdx = 0;
+function nextKey() { return API_KEYS[keyIdx++ % API_KEYS.length]; }
+
+let countdownTimer = null;
+
+// ─── CLOCK-ALIGNED REFRESH ────────────────────────────────────────────────────
+function msUntilNextHour() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(now.getHours() + 1, 0, 0, 0);
+  return next - now;
+}
+
+function scheduleNextHour() {
+  const ms = msUntilNextHour();
+  setTimeout(() => {
+    fetchAll();
+    // After first exact-hour fire, repeat every hour
+    setInterval(fetchAll, 60 * 60 * 1000);
+  }, ms);
+}
+
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    const rem = msUntilNextHour();
+    const m = Math.floor(rem / 60000);
+    const s = Math.floor((rem % 60000) / 1000);
+    document.getElementById("nextRefresh").textContent =
+      `Sonraki yenileme: ${m}:${s.toString().padStart(2,"0")}`;
+  }, 1000);
+}
+
+// ─── STATUS ──────────────────────────────────────────────────────────────────
+function setStatus(type, msg) {
+  document.getElementById("statusDot").className = "dot " + type;
+  document.getElementById("statusText").textContent = msg;
+}
+
+function setProgress(done, total, label) {
+  const wrap = document.getElementById("progressWrap");
+  if (total === 0) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  document.getElementById("progressFill").style.width = Math.round((done/total)*100) + "%";
+  document.getElementById("progressDetail").textContent = label;
+}
+
+// ─── YOUTUBE API ─────────────────────────────────────────────────────────────
+async function yt(endpoint, params) {
+  const url = new URL(BASE + endpoint);
+  url.searchParams.set("key", nextKey());
+  for (const [k,v] of Object.entries(params)) url.searchParams.set(k, v);
+  const r = await fetch(url);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e?.error?.message || "HTTP " + r.status);
+  }
+  return r.json();
+}
+
+async function resolveChannelId(handle) {
+  // Try channels endpoint with forHandle (v3 supports this)
+  try {
+    const h = handle.startsWith("@") ? handle.slice(1) : handle;
+    const d = await yt("/channels", { part:"id", forHandle: h });
+    if (d.items?.length) return d.items[0].id;
+  } catch(_) {}
+  // Fallback: search
+  const d = await yt("/search", { part:"snippet", type:"channel", q: handle, maxResults:1 });
+  if (d.items?.length) return d.items[0].id.channelId;
+  throw new Error("Bulunamadı: " + handle);
+}
+
+async function getUploadsPlaylist(channelId) {
+  const d = await yt("/channels", { part:"contentDetails", id: channelId });
+  return d.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+}
+
+async function getRecentVideos(playlistId) {
+  const d = await yt("/playlistItems", {
+    part:"contentDetails,snippet", playlistId, maxResults:50
+  });
+  return d.items || [];
+}
+
+async function getVideoDetails(ids) {
+  if (!ids.length) return [];
+  const d = await yt("/videos", { part:"contentDetails,statistics,snippet", id: ids.join(",") });
+  return d.items || [];
+}
+
+function parseDuration(d) {
+  const m = d.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (parseInt(m[1]||0)*3600)+(parseInt(m[2]||0)*60)+parseInt(m[3]||0);
+}
+
+function timeAgo(ds) {
+  const diff = (Date.now() - new Date(ds)) / 1000;
+  if (diff < 3600) return Math.floor(diff/60) + "d önce";
+  return Math.floor(diff/3600) + "s önce";
+}
+
+function fmtViews(n) {
+  n = parseInt(n)||0;
+  if (n >= 1e6) return (n/1e6).toFixed(1)+"M";
+  if (n >= 1e3) return (n/1e3).toFixed(1)+"K";
+  return n.toString();
+}
+
+function fmtDur(s) {
+  return Math.floor(s/60)+":"+(s%60).toString().padStart(2,"0");
+}
+
+function esc(s) {
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ─── MAIN FETCH ───────────────────────────────────────────────────────────────
+async function fetchAll() {
+  setStatus("loading", "Taranıyor…");
+  document.getElementById("resultsSection").style.display = "none";
+  document.getElementById("emptyState").style.display = "none";
+
+  const cutoff = new Date(Date.now() - 24*60*60*1000);
+  const allShorts = [];
+  const total = CHANNELS.length;
+
+  for (let i = 0; i < total; i++) {
+    const ch = CHANNELS[i];
+    setProgress(i, total, `[${i+1}/${total}] ${ch}`);
+    setStatus("loading", `${ch} işleniyor…`);
+    try {
+      const channelId = await resolveChannelId(ch);
+      const uploadsId = await getUploadsPlaylist(channelId);
+      if (!uploadsId) continue;
+
+      const items = await getRecentVideos(uploadsId);
+      const recent = items.filter(it => {
+        const pub = new Date(it.contentDetails?.videoPublishedAt || it.snippet?.publishedAt);
+        return pub >= cutoff;
+      });
+      if (!recent.length) continue;
+
+      const ids = recent
+        .map(it => it.contentDetails?.videoId || it.snippet?.resourceId?.videoId)
+        .filter(Boolean);
+
+      const details = await getVideoDetails(ids);
+      for (const v of details) {
+        const dur = parseDuration(v.contentDetails?.duration || "PT0S");
+        if (dur < 1 || dur > 60) continue;
+        allShorts.push({
+          id: v.id,
+          title: v.snippet?.title,
+          channel: v.snippet?.channelTitle,
+          publishedAt: v.snippet?.publishedAt,
+          views: parseInt(v.statistics?.viewCount || 0),
+          duration: dur,
+          thumb: v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.default?.url
+        });
+      }
+    } catch(e) {
+      console.warn(ch, e.message);
+    }
+  }
+
+  setProgress(0, 0, "");
+
+  if (!allShorts.length) {
+    setStatus("error", "Son 24 saatte Shorts bulunamadı veya kota doldu.");
+    document.getElementById("emptyMsg").textContent =
+      "Son 24 saatte kanallardan Shorts videosu bulunamadı ya da API kotası tükendi.";
+    document.getElementById("emptyState").style.display = "block";
+    return;
+  }
+
+  allShorts.sort((a,b) => b.views - a.views);
+  const top10 = allShorts.slice(0,10);
+  const maxV = top10[0].views || 1;
+
+  const list = document.getElementById("rankList");
+  list.innerHTML = "";
+  top10.forEach((v,i) => {
+    const pct = Math.round((v.views/maxV)*100);
+    const card = document.createElement("a");
+    card.className = "rank-card";
+    card.href = "https://youtube.com/shorts/" + v.id;
+    card.target = "_blank";
+    card.rel = "noopener";
+    card.style.animationDelay = (i*0.05)+"s";
+    card.innerHTML = `
+      <div class="rank-num">${i+1}</div>
+      ${v.thumb
+        ? `<img class="thumb" src="${esc(v.thumb)}" alt="" loading="lazy">`
+        : `<div class="thumb-ph">📱</div>`}
+      <div class="card-info">
+        <div class="channel-tag">${esc(v.channel)}</div>
+        <div class="video-title">${esc(v.title)}</div>
+        <div class="video-meta">
+          <span class="badge views">👁 ${fmtViews(v.views)}</span>
+          <span class="badge time">🕐 ${timeAgo(v.publishedAt)}</span>
+          <span class="badge dur">⏱ ${fmtDur(v.duration)}</span>
+        </div>
+      </div>
+      <div class="view-count-bar">
+        <div class="view-num">${fmtViews(v.views)}</div>
+        <div class="view-label">izlenme</div>
+        <div class="view-bar-bg"><div class="view-bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    list.appendChild(card);
+  });
+
+  document.getElementById("resultsSection").style.display = "block";
+  document.getElementById("lastUpdate").textContent =
+    new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
+  setStatus("ok", `${allShorts.length} Shorts arasından top 10 — her tam saatte güncellenir`);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+fetchAll();
+scheduleNextHour();
+startCountdown();
+</script>
+</body>
+</html>
