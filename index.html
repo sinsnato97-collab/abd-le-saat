@@ -176,8 +176,7 @@
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const API_KEYS = [
   "AIzaSyAlKVwy41np4oUlYpCVqY_nB9xMmRdFtt4",
-  "AIzaSyA86YeMU5VEZKf4BuQ_oWogdd01BEGk12M",
-  "AIzaSyBMxnn48dVaQdBH8qCE9jgGaz7dI5W06Xg"
+  "AIzaSyA86YeMU5VEZKf4BuQ_oWogdd01BEGk12M"
 ];
 
 const CHANNELS = [
@@ -199,10 +198,45 @@ const CHANNELS = [
 ];
 
 const BASE = "https://www.googleapis.com/youtube/v3";
+const CACHE_KEY = "shortsTrackerCacheV1";
 let keyIdx = 0;
 function nextKey() { return API_KEYS[keyIdx++ % API_KEYS.length]; }
 
 let countdownTimer = null;
+let hourlyTimer = null;
+
+function getHourBucket(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}-${String(date.getHours()).padStart(2,"0")}`;
+}
+
+function saveCache(allShorts) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      bucket: getHourBucket(),
+      savedAt: new Date().toISOString(),
+      allShorts
+    }));
+  } catch (e) {
+    console.warn("Cache kaydedilemedi:", e.message);
+  }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.allShorts)) return null;
+    return parsed;
+  } catch (e) {
+    console.warn("Cache okunamadı:", e.message);
+    return null;
+  }
+}
+
+function clearCache() {
+  try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
+}
 
 // ─── CLOCK-ALIGNED REFRESH ────────────────────────────────────────────────────
 function msUntilNextHour() {
@@ -213,11 +247,11 @@ function msUntilNextHour() {
 }
 
 function scheduleNextHour() {
+  if (hourlyTimer) clearTimeout(hourlyTimer);
   const ms = msUntilNextHour();
-  setTimeout(() => {
-    fetchAll();
-    // After first exact-hour fire, repeat every hour
-    setInterval(fetchAll, 60 * 60 * 1000);
+  hourlyTimer = setTimeout(async () => {
+    await fetchAll();
+    scheduleNextHour();
   }, ms);
 }
 
@@ -317,10 +351,77 @@ function esc(s) {
   return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function renderResults(allShorts, options = {}) {
+  const { savedAt = null, source = "live" } = options;
+
+  document.getElementById("resultsSection").style.display = "none";
+  document.getElementById("emptyState").style.display = "none";
+  setProgress(0, 0, "");
+
+  if (!allShorts.length) {
+    setStatus("error", "Gösterilecek veri yok.");
+    document.getElementById("emptyMsg").textContent = "Kaydedilmiş ya da yeni veri bulunamadı.";
+    document.getElementById("emptyState").style.display = "block";
+    return;
+  }
+
+  allShorts.sort((a,b) => b.views - a.views);
+  const top10 = allShorts.slice(0,10);
+  const maxV = top10[0].views || 1;
+
+  const list = document.getElementById("rankList");
+  list.innerHTML = "";
+  top10.forEach((v,i) => {
+    const pct = Math.round((v.views/maxV)*100);
+    const card = document.createElement("a");
+    card.className = "rank-card";
+    card.href = "https://youtube.com/shorts/" + v.id;
+    card.target = "_blank";
+    card.rel = "noopener";
+    card.style.animationDelay = (i*0.05)+"s";
+    card.innerHTML = `
+      <div class="rank-num">${i+1}</div>
+      ${v.thumb
+        ? `<img class="thumb" src="${esc(v.thumb)}" alt="" loading="lazy">`
+        : `<div class="thumb-ph">📱</div>`}
+      <div class="card-info">
+        <div class="channel-tag">${esc(v.channel)}</div>
+        <div class="video-title">${esc(v.title)}</div>
+        <div class="video-meta">
+          <span class="badge views">👁 ${fmtViews(v.views)}</span>
+          <span class="badge time">🕐 ${timeAgo(v.publishedAt)}</span>
+          <span class="badge dur">⏱ ${fmtDur(v.duration)}</span>
+        </div>
+      </div>
+      <div class="view-count-bar">
+        <div class="view-num">${fmtViews(v.views)}</div>
+        <div class="view-label">izlenme</div>
+        <div class="view-bar-bg"><div class="view-bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    list.appendChild(card);
+  });
+
+  const updateTime = savedAt ? new Date(savedAt) : new Date();
+  document.getElementById("lastUpdate").textContent =
+    updateTime.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
+  document.getElementById("resultsSection").style.display = "block";
+
+  if (source === "cache") {
+    setStatus("ok", `${allShorts.length} Shorts arasından top 10 — kayıtlı veri gösteriliyor`);
+  } else if (source === "stale-cache") {
+    setStatus("error", "Canlı tarama başarısız oldu, kayıtlı son veri gösteriliyor.");
+  } else {
+    setStatus("ok", `${allShorts.length} Shorts arasından top 10 — her tam saatte güncellenir`);
+  }
+}
+
+function hasFreshCache(cache) {
+  return cache && cache.bucket === getHourBucket() && Array.isArray(cache.allShorts) && cache.allShorts.length > 0;
+}
+
 // ─── MAIN FETCH ───────────────────────────────────────────────────────────────
 async function fetchAll() {
   setStatus("loading", "Taranıyor…");
-  document.getElementById("resultsSection").style.display = "none";
   document.getElementById("emptyState").style.display = "none";
 
   const cutoff = new Date(Date.now() - 24*60*60*1000);
@@ -366,9 +467,14 @@ async function fetchAll() {
     }
   }
 
-  setProgress(0, 0, "");
-
   if (!allShorts.length) {
+    const cache = loadCache();
+    if (cache?.allShorts?.length) {
+      renderResults(cache.allShorts, { savedAt: cache.savedAt, source: "stale-cache" });
+      return;
+    }
+
+    setProgress(0, 0, "");
     setStatus("error", "Son 24 saatte Shorts bulunamadı veya kota doldu.");
     document.getElementById("emptyMsg").textContent =
       "Son 24 saatte kanallardan Shorts videosu bulunamadı ya da API kotası tükendi.";
@@ -376,52 +482,26 @@ async function fetchAll() {
     return;
   }
 
-  allShorts.sort((a,b) => b.views - a.views);
-  const top10 = allShorts.slice(0,10);
-  const maxV = top10[0].views || 1;
+  saveCache(allShorts);
+  const cache = loadCache();
+  renderResults(allShorts, { savedAt: cache?.savedAt, source: "live" });
+}
 
-  const list = document.getElementById("rankList");
-  list.innerHTML = "";
-  top10.forEach((v,i) => {
-    const pct = Math.round((v.views/maxV)*100);
-    const card = document.createElement("a");
-    card.className = "rank-card";
-    card.href = "https://youtube.com/shorts/" + v.id;
-    card.target = "_blank";
-    card.rel = "noopener";
-    card.style.animationDelay = (i*0.05)+"s";
-    card.innerHTML = `
-      <div class="rank-num">${i+1}</div>
-      ${v.thumb
-        ? `<img class="thumb" src="${esc(v.thumb)}" alt="" loading="lazy">`
-        : `<div class="thumb-ph">📱</div>`}
-      <div class="card-info">
-        <div class="channel-tag">${esc(v.channel)}</div>
-        <div class="video-title">${esc(v.title)}</div>
-        <div class="video-meta">
-          <span class="badge views">👁 ${fmtViews(v.views)}</span>
-          <span class="badge time">🕐 ${timeAgo(v.publishedAt)}</span>
-          <span class="badge dur">⏱ ${fmtDur(v.duration)}</span>
-        </div>
-      </div>
-      <div class="view-count-bar">
-        <div class="view-num">${fmtViews(v.views)}</div>
-        <div class="view-label">izlenme</div>
-        <div class="view-bar-bg"><div class="view-bar-fill" style="width:${pct}%"></div></div>
-      </div>`;
-    list.appendChild(card);
-  });
+function init() {
+  startCountdown();
+  scheduleNextHour();
 
-  document.getElementById("resultsSection").style.display = "block";
-  document.getElementById("lastUpdate").textContent =
-    new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"});
-  setStatus("ok", `${allShorts.length} Shorts arasından top 10 — her tam saatte güncellenir`);
+  const cache = loadCache();
+  if (hasFreshCache(cache)) {
+    renderResults(cache.allShorts, { savedAt: cache.savedAt, source: "cache" });
+    return;
+  }
+
+  fetchAll();
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-fetchAll();
-scheduleNextHour();
-startCountdown();
+init();
 </script>
 </body>
 </html>
